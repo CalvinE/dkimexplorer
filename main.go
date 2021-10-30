@@ -12,6 +12,13 @@ type inputArgs struct {
 	inputEmailFile string
 }
 
+type header struct {
+	AbsoluteStartIndex, AbsoluteEndIndex, HeaderLength uint
+
+	FoldingWhiteSpaceRelativeStartIndexes []uint
+	HeaderBytes                           []byte
+}
+
 type ParserState uint8
 
 const (
@@ -33,11 +40,16 @@ const (
 
 var (
 	parserState = Unset
+
+	nonCRLFWhitespace = map[rune]struct{}{
+		sp:  {},
+		tab: {},
+	}
 )
 
 func main() {
 	var inputArgs inputArgs
-	flag.StringVar(&inputArgs.inputEmailFile, "inputFile", "", "The input email file for DKIM signature verification")
+	flag.StringVar(&inputArgs.inputEmailFile, "inputFile", "sample_email.txt", "The input email file for DKIM signature verification")
 	flag.Parse()
 	fmt.Printf("test call %v\n", inputArgs)
 	fileData, err := ioutil.ReadFile(inputArgs.inputEmailFile)
@@ -53,12 +65,73 @@ func main() {
 		return
 	}
 	fmt.Printf("file length: %d\n", fileLength)
-	for i := 0; i < 150; {
+	var i int
+	// parse headers
+
+	// currentLineIndex helps us keep track of how many characters in a header we are
+	var currentHeaderIndex uint = 0
+	var headers []header
+	currentHeader := &header{}
+	var previousRune rune
+	for i < fileLength {
 		// decode text as UTF-8 to handle a wide variety of characters in text?
-		r, width := utf8.DecodeRune(fileData[i : i+1])
-		fmt.Println(i, "\t", r, "\t", string(r))
+		currentRune, width := utf8.DecodeRune(fileData[i:])
+		// fmt.Println(i, "\t", currentRune, "\t", string(currentRune), "\t", width)
 		i += width
+		currentHeaderIndex += uint(width)
+		if currentRune == lf {
+			// we hit a line feed.
+			if previousRune == cr && i < fileLength {
+				// we are not at the end of the file and the previous rune was a CR.
+				if currentHeaderIndex == 2 {
+					// end of headers... Designated by an empty line
+					break
+				}
+				// the preivous character was a carrage return!
+				nextRune, width2 := utf8.DecodeRune(fileData[i:])
+				// fmt.Println(i, "\t", nextRune, "\t", string(nextRune), "\t", width2)
+				_, ok := nonCRLFWhitespace[nextRune]
+				if ok {
+					// current index is part of folding white space
+					// because the first character on the next line is white space.
+					// we want to capture the index of the folding whitespace CR
+					// so we can quickly get to it later.
+					currentHeader.FoldingWhiteSpaceRelativeStartIndexes = append(currentHeader.FoldingWhiteSpaceRelativeStartIndexes, currentHeaderIndex)
+					currentHeaderIndex += uint(width2)
+				} else {
+					// This is not folding white space, so it must be a new header!
+					// current index is end of header
+					currentHeader.AbsoluteEndIndex = uint(i)
+					currentHeader.HeaderBytes = make([]byte, currentHeaderIndex)
+					currentHeader.HeaderLength = currentHeaderIndex
+					_ = copy(currentHeader.HeaderBytes, fileData[currentHeader.AbsoluteStartIndex:currentHeader.AbsoluteEndIndex])
+					// fmt.Printf("%d copied \n", copied)
+					headers = append(headers, *currentHeader)
+					currentHeader = &header{
+						AbsoluteStartIndex: uint(i),
+					}
+					currentHeaderIndex = uint(1)
+				}
+				// increment out file position index and our previous run since we skipped one ahead
+				i += width2
+				previousRune = nextRune
+				continue
+			} else {
+				// end of file?
+				fmt.Println("Encountered end of file while parsing headers???")
+				os.Exit(3)
+				break
+			}
+		}
+		previousRune = currentRune
 	}
+
+	for i, header := range headers {
+		// fmt.Printf("%d - header:\t %v\n", i, header)
+		fmt.Printf("%d:\t %s", i+1, header.HeaderBytes)
+	}
+
+	// read body
 }
 
 // func ByteIsNonCRLFWhitespace(b byte) bool {
