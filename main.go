@@ -104,6 +104,14 @@ func main() {
 					currentHeader.AbsoluteEndIndex = uint(i)
 					currentHeader.HeaderBytes = make([]byte, currentHeaderIndex)
 					currentHeader.HeaderLength = currentHeaderIndex
+					// copying all header bytes into byte slice in the header struct
+					// so we can play with it later.
+					// I made a symantic choice here. the way slicing works here is the number
+					// after the : is like saying up to but not including that item
+					// I may come back and change this so that the end index in the slicing below
+					// adds one to the end index and makes this value the actual end of the header,
+					// but I think I am over thinking it so I will leave it be for now. for our
+					// purposes it works fine...
 					_ = copy(currentHeader.HeaderBytes, fileData[currentHeader.AbsoluteStartIndex:currentHeader.AbsoluteEndIndex])
 					// fmt.Printf("%d copied \n", copied)
 					headers = append(headers, *currentHeader)
