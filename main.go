@@ -17,6 +17,8 @@ type header struct {
 
 	FoldingWhiteSpaceRelativeStartIndexes []uint
 	HeaderBytes                           []byte
+	NormalizedHeaderName                  string
+	RawValueStartIndex                    uint
 }
 
 type ParserState uint8
@@ -65,7 +67,7 @@ func main() {
 		return
 	}
 	fmt.Printf("file length: %d\n", fileLength)
-	var i int
+	var currentFileIndex int
 	// parse headers
 
 	// currentLineIndex helps us keep track of how many characters in a header we are
@@ -73,22 +75,22 @@ func main() {
 	var headers []header
 	currentHeader := &header{}
 	var previousRune rune
-	for i < fileLength {
+	for currentFileIndex < fileLength {
 		// decode text as UTF-8 to handle a wide variety of characters in text?
-		currentRune, width := utf8.DecodeRune(fileData[i:])
+		currentRune, width := utf8.DecodeRune(fileData[currentFileIndex:])
 		// fmt.Println(i, "\t", currentRune, "\t", string(currentRune), "\t", width)
-		i += width
+		currentFileIndex += width
 		currentHeaderIndex += uint(width)
 		if currentRune == lf {
 			// we hit a line feed.
-			if previousRune == cr && i < fileLength {
+			if previousRune == cr && currentFileIndex < fileLength {
 				// we are not at the end of the file and the previous rune was a CR.
 				if currentHeaderIndex == 2 {
 					// end of headers... Designated by an empty line
 					break
 				}
 				// the preivous character was a carrage return!
-				nextRune, width2 := utf8.DecodeRune(fileData[i:])
+				nextRune, width2 := utf8.DecodeRune(fileData[currentFileIndex:])
 				// fmt.Println(i, "\t", nextRune, "\t", string(nextRune), "\t", width2)
 				_, ok := nonCRLFWhitespace[nextRune]
 				if ok {
@@ -101,7 +103,7 @@ func main() {
 				} else {
 					// This is not folding white space, so it must be a new header!
 					// current index is end of header
-					currentHeader.AbsoluteEndIndex = uint(i)
+					currentHeader.AbsoluteEndIndex = uint(currentFileIndex)
 					currentHeader.HeaderBytes = make([]byte, currentHeaderIndex)
 					currentHeader.HeaderLength = currentHeaderIndex
 					// copying all header bytes into byte slice in the header struct
@@ -113,15 +115,16 @@ func main() {
 					// but I think I am over thinking it so I will leave it be for now. for our
 					// purposes it works fine...
 					_ = copy(currentHeader.HeaderBytes, fileData[currentHeader.AbsoluteStartIndex:currentHeader.AbsoluteEndIndex])
+
 					// fmt.Printf("%d copied \n", copied)
 					headers = append(headers, *currentHeader)
 					currentHeader = &header{
-						AbsoluteStartIndex: uint(i),
+						AbsoluteStartIndex: uint(currentFileIndex),
 					}
 					currentHeaderIndex = uint(1)
 				}
 				// increment out file position index and our previous run since we skipped one ahead
-				i += width2
+				currentFileIndex += width2
 				previousRune = nextRune
 				continue
 			} else {
@@ -139,7 +142,30 @@ func main() {
 		fmt.Printf("%d:\t %s", i+1, header.HeaderBytes)
 	}
 
+	remainingLength := fileLength - currentFileIndex
+	rawBodyData := make([]byte, remainingLength)
+	copy(rawBodyData, fileData[currentFileIndex:])
+	fmt.Printf("message body: %s", rawBodyData)
+
 	// read body
+}
+
+// parseHeader takes the raw bytes of a header and produces the corresponding header struct.
+func ParseHeader(headerData []byte) header {
+	currentIndex := 0
+	headerLength := len(headerData)
+	header := header{}
+
+	for currentIndex < headerLength {
+		currentRune, width := utf8.DecodeRune(headerData[currentIndex:])
+		currentIndex += width
+		if currentRune == colon {
+			// this marks the end of the header name and we will lower case the header name and take the index of the start of the header value.
+			// the start index of the header value will include any whitespace before the value, so we have the "raw" value.
+		}
+
+	}
+	return header
 }
 
 // func ByteIsNonCRLFWhitespace(b byte) bool {
