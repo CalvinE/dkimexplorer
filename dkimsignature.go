@@ -87,7 +87,7 @@ func (v DKIMCanonAlgorithm) String() string {
 	case DKIM_CANON_ALGO_RELAXED:
 		return "relaxed"
 	case DKIM_CANON_ALGO_RELAXED_RELAXED:
-		return "relaed/relaxed"
+		return "relaxed/relaxed"
 	case DKIM_CANON_ALGO_RELAXED_SIMPLE:
 		return "relaxed/simple"
 	case DKIM_CANON_ALGO_SIMPLE_RELAXED:
@@ -142,13 +142,15 @@ const (
 )
 
 type DKIMSignature struct {
+	Header                    header
+	RawBytes                  []byte
 	Version                   DKIMVersion        `json:"v"`
 	Algorithm                 DKIMAlgorithm      `json:"a"`
 	Signature                 string             `json:"b"`
 	BodySignature             string             `json:"bh"`
 	CanonicalizationAlgorithm DKIMCanonAlgorithm `json:"c"`
 	SigningDomainIdentifier   string             `json:"d"`
-	SignedHeaders             string             `json:"h"`
+	SignedHeaders             []string           `json:"h"`
 	AgentUserIdentifier       string             `json:"i"`
 	BodyLengthLimit           int                `json:"l"`
 	QueryMethod               string             `json:"q"`
@@ -161,39 +163,25 @@ type DKIMSignature struct {
 // NewDKIMSignature is the proper way for creating a new DKIMSignature, and populates defaults.
 func NewDKIMSignature() DKIMSignature {
 	return DKIMSignature{
-		BodyLengthLimit: DEFAULT_BODY_LENGTH_LIMIT,
-		QueryMethod:     DEFAULT_QUERY_METHOD,
+		CanonicalizationAlgorithm: DKIM_CANON_ALGO_SIMPLE,
+		BodyLengthLimit:           DEFAULT_BODY_LENGTH_LIMIT,
+		QueryMethod:               DEFAULT_QUERY_METHOD,
 	}
 }
 
 // TODO: refactor to pull out this parsing logic as it is shared with the domain key parser.
 func ParseDKIMSignature(header header) (DKIMSignature, error) {
 	dkimSignature := NewDKIMSignature()
+	dkimSignature.Header = header
+	dkimSignature.RawBytes = header.RawHeaderBytes
 	headerName := header.getHeaderKey(true)
 	if headerName != DKIMSignatureHeaderName {
 		return dkimSignature, fmt.Errorf("header name is not what was expected:\ngot -\t%s\n expected -\t%s", headerName, DKIMSignatureHeaderName)
 	}
 	rawHeaderValue := header.getHeaderRawValueBytes()
-	currentRuneIndex := 0
-	lastSemicolonIndex := 0
-	lastEqualsIndex := 0
-	rawValueLength := len(rawHeaderValue)
-	var key, value string
-	for currentRuneIndex < rawValueLength {
-		currentRune, width := utf8.DecodeRune(rawHeaderValue[currentRuneIndex:])
-		currentRuneIndex += width
-		if currentRune == '=' && lastEqualsIndex == 0 {
-			rawKey := string(rawHeaderValue[lastSemicolonIndex : currentRuneIndex-width])
-			key = strings.TrimSpace(rawKey)
-			lastEqualsIndex = currentRuneIndex
-		} else if currentRune == ';' {
-			rawValue := string(rawHeaderValue[lastEqualsIndex : currentRuneIndex-width])
-			value = strings.TrimSpace(rawValue)
-			dkimSignature.AddValue(key, value)
-			lastSemicolonIndex = currentRuneIndex
-			lastEqualsIndex = 0
-			key, value = "", ""
-		}
+	dkimSignatureMap := parseKeyValuePairs(rawHeaderValue, '=', ';')
+	for key, value := range dkimSignatureMap {
+		dkimSignature.AddValue(key, value)
 	}
 	return dkimSignature, nil
 }
@@ -209,7 +197,7 @@ func (sig *DKIMSignature) AddValue(key, value string) error {
 	case DKIMSignature_AlgorithmKey:
 		sig.Algorithm = DKIMAlgorithmValue(value)
 		if sig.Algorithm == DKIM_ALGORITHM_INVALID {
-			return fmt.Errorf("invalid DKIM signing algorithm specified: %s", value)
+			return fmt.Errorf("unsupported DKIM signing algorithm specified: %s", value)
 		}
 	case DKIMSignature_SignatureKey:
 		sig.Signature = value
@@ -218,12 +206,13 @@ func (sig *DKIMSignature) AddValue(key, value string) error {
 	case DKIMSignature_CanonicalizationAlgorithmKey:
 		sig.CanonicalizationAlgorithm = DKIMCanonAlgoValue(value)
 		if sig.CanonicalizationAlgorithm == DKIM_CANON_ALGO_INVALID {
-			return fmt.Errorf("invalid canonicalization algorithm specified: %s", value)
+			return fmt.Errorf("unsupported canonicalization algorithm specified: %s", value)
 		}
 	case DKIMSignature_SigningDomainIdentifierKey:
 		sig.SigningDomainIdentifier = value
 	case DKIMSignature_SignedHeadersKey:
-		sig.SignedHeaders = value
+		headers := strings.Split(value, ":")
+		sig.SignedHeaders = headers
 	case DKIMSignature_AgentUserIdentifierKey:
 		sig.AgentUserIdentifier = value
 	case DKIMSignature_BodyLengthLimitKey:
@@ -244,4 +233,32 @@ func (sig *DKIMSignature) AddValue(key, value string) error {
 		sig.CopiedHeaderFields = value
 	}
 	return nil
+}
+
+// TODO need a way to modify the header struct to remove the b= data for verification.
+// per https://datatracker.ietf.org/doc/html/rfc6376#section-3.7 item #2
+func (dsig *DKIMSignature) GetDKIMSignatureForVerificationOrSigning() []byte {
+	rawLength := len(dsig.Header.RawHeaderBytes)
+	prepedDKIMSIgnature := make([]byte, 0, rawLength)
+	isInB := false
+	var previousRune rune
+	for i := 0; i < rawLength; {
+		currentRune, width := utf8.DecodeRune(dsig.RawBytes[i:])
+		i += width
+		if previousRune == 'b' && currentRune == '=' {
+			// we are at the b field value of the dkim signature
+			// lets skip until the semi colon if there is one.
+			isInB = true
+		} else if isInB {
+			if currentRune != ';' {
+				previousRune = currentRune
+				continue
+			}
+			isInB = false
+			// we want to preserve the semicolon? I am not 100% sure about this...
+		}
+		prepedDKIMSIgnature = append(prepedDKIMSIgnature, byte(currentRune))
+		previousRune = currentRune
+	}
+	return prepedDKIMSIgnature
 }

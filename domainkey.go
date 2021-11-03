@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 )
 
 type DomainKeyVersion int
@@ -127,31 +126,8 @@ func NewDomainKey() DomainKey {
 
 func ParseDomainKey(domainKeyBytes []byte) (DomainKey, error) {
 	domainKey := NewDomainKey()
-	currentRuneIndex := 0
-	lastSemicolonIndex := 0
-	lastEqualsIndex := 0
-	rawValueLength := len(domainKeyBytes)
-	var key, value string
-	for currentRuneIndex < rawValueLength {
-		currentRune, width := utf8.DecodeRune(domainKeyBytes[currentRuneIndex:])
-		currentRuneIndex += width
-		if currentRune == '=' && lastEqualsIndex == 0 {
-			rawKey := string(domainKeyBytes[lastSemicolonIndex : currentRuneIndex-width])
-			key = strings.TrimSpace(rawKey)
-			lastEqualsIndex = currentRuneIndex
-		} else if currentRune == ';' {
-			rawValue := string(domainKeyBytes[lastEqualsIndex : currentRuneIndex-width])
-			value = strings.TrimSpace(rawValue)
-			domainKey.AddValue(key, value)
-			lastSemicolonIndex = currentRuneIndex
-			lastEqualsIndex = 0
-			key, value = "", ""
-		}
-	}
-	if lastEqualsIndex != 0 {
-		// unterminated field in domain key data.
-		rawValue := string(domainKeyBytes[lastEqualsIndex:])
-		value = strings.TrimSpace(rawValue)
+	domainKeyMap := parseKeyValuePairs(domainKeyBytes, '=', ';')
+	for key, value := range domainKeyMap {
 		domainKey.AddValue(key, value)
 	}
 	return domainKey, nil
@@ -162,7 +138,7 @@ func (dkey *DomainKey) AddValue(key, value string) error {
 	case DomainKey_VersionKey:
 		dkey.Version = DomainKeyVersionValue(value)
 		if dkey.Version == DomainKeyVersion_INVALID {
-			return fmt.Errorf("invalid version in domain key: %s", value)
+			return fmt.Errorf("unsupported version in domain key version: %s", value)
 		}
 	case DomainKey_AcceptableHashAlgorithmsKey:
 		values := strings.Split(value, ":")
@@ -170,14 +146,14 @@ func (dkey *DomainKey) AddValue(key, value string) error {
 	case DomainKey_KeyTypeKey:
 		dkey.KeyType = DomainKeyKeyTypeValue(value)
 		if dkey.KeyType == DomainKeyKeyType_INVALID {
-			return fmt.Errorf("invalid key type in domain key: %s", value)
+			return fmt.Errorf("unsupported key type in domain key: %s", value)
 		}
 	case DomainKey_NotesKey:
 		dkey.Notes = value
 	case DomainKey_PublicKeyKey:
 		dkey.PublicKey = value
 		if len(dkey.PublicKey) == 0 {
-			return errors.New("public key provided has no data")
+			return errors.New("public key provided has no data. has been revoked per https://datatracker.ietf.org/doc/html/rfc6376#section-6.1.2 item #7")
 		}
 	case DomainKey_ServiceTypeKey:
 		dkey.ServiceType = value
@@ -188,7 +164,7 @@ func (dkey *DomainKey) AddValue(key, value string) error {
 			dkey.Flags |= val
 		}
 		if dkey.Flags.ContainsFlag(DomainKeyFlag_INVALID) {
-			return fmt.Errorf("invalid flag in domain key: %s", value)
+			return fmt.Errorf("unsupported flag in domain key: %s", value)
 		}
 	}
 	return nil
