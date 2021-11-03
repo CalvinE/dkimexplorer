@@ -1,9 +1,13 @@
 package main
 
 import (
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"unicode"
 	"unicode/utf8"
@@ -208,6 +212,142 @@ func printSummary(message *message) {
 }
 
 func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignature, otherDKIMSignatures []header) DKIMValidationState {
+	// calculate canonicalized body
+	canonicalizeBodyBytes, err := canonicalizeBody(message, dkimSignatureToValidate.CanonicalizationAlgorithm, dkimSignatureToValidate.BodyLengthLimit)
+	if err != nil {
+		fmt.Printf("Failed to canonicalize body of message: %s\n\n", err.Error())
+		return PERMFAIL
+	}
+	// calculate hash on canonicalized body hash
+	var canonicalizedBodyHash string
+	switch dkimSignatureToValidate.Algorithm {
+	case DKIM_ALGORITHM_RSA_SHA_1:
+		hash := sha1.Sum(canonicalizeBodyBytes)
+		canonicalizedBodyHash = base64.StdEncoding.EncodeToString(hash[:])
+	case DKIM_ALGORITHM_RSA_SHA_256:
+		hash := sha256.Sum256(canonicalizeBodyBytes)
+		canonicalizedBodyHash = base64.StdEncoding.EncodeToString(hash[:])
+	}
+	// confirm canonicalized body hash to dkim signature bh value
+	if canonicalizedBodyHash != dkimSignatureToValidate.BodySignature {
+		fmt.Printf("body hash does not match: got: %s - expected: %s\n\n", canonicalizedBodyHash, dkimSignatureToValidate.BodySignature)
+		return PERMFAIL
+	}
+	// caluclate canonicalize headers
+	// TODO:
 
+	// get "domain key" from set query method
+	// for now I am going to assume the value is the defaul which is "dns/txt" I dont know if ill implment others...
+	if dkimSignatureToValidate.QueryMethod != DEFAULT_QUERY_METHOD {
+		fmt.Println("currently only one query method is supported.")
+		fmt.Printf("unsupported query method encountered: got: %s - expected: %s\n\n", dkimSignatureToValidate.QueryMethod, DEFAULT_QUERY_METHOD)
+		return TEMPFAIL
+	}
+	domainKeyLocation := fmt.Sprintf("%s._domainkey.%s", dkimSignatureToValidate.Selector, dkimSignatureToValidate.SigningDomainIdentifier)
+	records, err := net.LookupTXT(domainKeyLocation)
+	if err != nil {
+		fmt.Printf("failed to retreive domain key from location %s: %s\n\n", domainKeyLocation, err.Error())
+	}
+	numRecords := len(records)
+	if numRecords != 1 {
+		fmt.Printf("no txt record or more than one txt record found. numtxt records: %d\n\n", numRecords)
+		return TEMPFAIL
+	}
+	// parse domain key from record return from query method
+	domainKey, err := ParseDomainKey([]byte(records[0]))
+	if err != nil {
+		fmt.Printf("failed to parse domain key: %s\n\n", err.Error())
+		return TEMPFAIL
+	}
+	fmt.Println(domainKey)
+	fmt.Println(canonicalizedBodyHash)
+	// check for y flag and return TEMPFAIL is present. Per https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1
+	if domainKey.Flags.ContainsFlag(DomainKeyFlag_Y) {
+		fmt.Print("failing signature validation because y flag is present in domain key\n\n")
+		return TEMPFAIL
+	}
 	return TEMPFAIL
+}
+
+// In hash step 1, the Signer/Verifier MUST hash the message body,
+// canonicalized using the body canonicalization algorithm specified in
+// the "c=" tag and then truncated to the length specified in the "l="
+// tag.  That hash value is then converted to base64 form and inserted
+// into (Signers) or compared to (Verifiers) the "bh=" tag of the DKIM-
+// Signature header field.
+func canonicalizeBody(message *message, canonicalizationAlogrithm DKIMCanonAlgorithm, length int) ([]byte, error) {
+	switch canonicalizationAlogrithm {
+	case DKIM_CANON_ALGO_SIMPLE, DKIM_CANON_ALGO_RELAXED_SIMPLE, DKIM_CANON_ALGO_SIMPLE_SIMPLE:
+		// simple canonicalization algorithm
+		return simpleCanonicalizeBody(message.RawBody, length)
+	case DKIM_CANON_ALGO_RELAXED, DKIM_CANON_ALGO_RELAXED_RELAXED, DKIM_CANON_ALGO_SIMPLE_RELAXED:
+		// relaxed canonicalization algorithm
+		return relaxedCanonicalizeBody(message.RawBody, length)
+	}
+	return nil, fmt.Errorf("failed to canonicalize body with algorithm specifed: %s", canonicalizationAlogrithm.String())
+}
+
+// simpleCanonicalizeBody per https://datatracker.ietf.org/doc/html/rfc6376#section-3.4.3 removed all empty lines from the end of the body,
+// leaving only one CRLF at the end of the body.
+func simpleCanonicalizeBody(messageBody []byte, length int) ([]byte, error) {
+	messageBodyLength := len(messageBody)
+	relevantBodyBytes := make([]byte, messageBodyLength)
+	copiedBytes := copy(relevantBodyBytes, messageBody)
+	currentBodyIndex := copiedBytes
+	startTrailingCRLFStartIndex := messageBodyLength
+	if messageBodyLength >= 2 {
+		for currentBodyIndex >= 0 {
+			previousByte := relevantBodyBytes[currentBodyIndex-2]
+			currentByte := relevantBodyBytes[currentBodyIndex-1]
+			currentBodyIndex -= 2
+			if previousByte == '\r' && currentByte == '\n' {
+				startTrailingCRLFStartIndex = currentBodyIndex
+			} else {
+				break
+			}
+		}
+	}
+	// add back
+	relevantBodyBytes = append(relevantBodyBytes[:startTrailingCRLFStartIndex], '\r', '\n')
+	if length == DEFAULT_BODY_LENGTH_LIMIT {
+		length = len(relevantBodyBytes)
+	}
+	return relevantBodyBytes[:length], nil
+}
+
+func relaxedCanonicalizeBody(messageBody []byte, length int) ([]byte, error) {
+	currentBodyIndex := 0
+	messageLength := len(messageBody)
+	relaxedBodyBytes := make([]byte, 0, messageLength)
+	consecutiveSpaceCharacters := 0
+	// startSpaceIndex, consecutiveSpaceCharacters := 0, 0
+	var previousRune rune
+	for currentBodyIndex < messageLength {
+		currentRune, width := utf8.DecodeRune(messageBody[currentBodyIndex:])
+		currentBodyIndex += width
+		if unicode.IsSpace(currentRune) {
+			consecutiveSpaceCharacters++
+			if previousRune == '\r' && currentRune == '\n' {
+				// next is new line
+				relaxedBodyBytes = append(relaxedBodyBytes, '\r', '\n')
+				consecutiveSpaceCharacters = 0
+			}
+			// is not new line
+		} else {
+			if consecutiveSpaceCharacters > 0 {
+				relaxedBodyBytes = append(relaxedBodyBytes, byte(' '), byte(currentRune))
+				consecutiveSpaceCharacters = 0
+			} else {
+				relaxedBodyBytes = append(relaxedBodyBytes, byte(currentRune))
+			}
+		}
+
+		previousRune = currentRune
+	}
+	// TODO: I think this can be improved, but for times sake I just use this code. The last step of the relaxed body canonicalization method is to basically run the
+	relaxedBodyBytes, err := simpleCanonicalizeBody(relaxedBodyBytes, length)
+	if length == DEFAULT_BODY_LENGTH_LIMIT {
+		length = len(relaxedBodyBytes)
+	}
+	return relaxedBodyBytes[:length], err
 }
