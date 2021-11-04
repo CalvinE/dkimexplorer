@@ -1,12 +1,16 @@
 package main
 
 import (
+	"crypto"
+	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -223,6 +227,7 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 	// calculate hash on canonicalized body hash
 	var canonicalizedBodyHash []byte
 	var canonicalizedBodyHashBase64 string
+
 	switch dkimSignatureToValidate.Algorithm {
 	case DKIM_ALGORITHM_RSA_SHA_1:
 		hash := sha1.Sum(canonicalizeBodyBytes)
@@ -310,26 +315,62 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 	if err != nil {
 		fmt.Printf("failed to canonicalize dkim signature for verification: %s\n\n", err.Error())
 	}
-	var signatureHash []byte
-	var signatureHashBase64 string
+	var computedSignatureHash []byte
+	var computedSignatureHashBase64 string
+	var hashAlgo crypto.Hash
+	hashBuffer := make([]byte, 0)
+	hashBuffer = append(hashBuffer, canonicalizedHeaderData...)
+	hashBuffer = append(hashBuffer, dkimSigForVerification...)
+	hashBuffer = append(hashBuffer, canonicalizedBodyHash...)
 	switch dkimSignatureToValidate.Algorithm {
 	case DKIM_ALGORITHM_RSA_SHA_1:
-		hashAlg := sha1.New()
-		hashAlg.Write(canonicalizedHeaderData)
-		hashAlg.Write(dkimSigForVerification)
-		hash := hashAlg.Sum(canonicalizedBodyHash)
-		signatureHash = hash[:]
-		signatureHashBase64 = base64.StdEncoding.EncodeToString(canonicalizedBodyHash)
+		hashAlgo = crypto.SHA1
+		// hashAlg := sha1.New()
+		// hashAlg.Write(canonicalizedHeaderData)
+		// hashAlg.Write(dkimSigForVerification)
+		// hash := hashAlg.Sum(canonicalizedBodyHash)
+		hash := sha1.Sum(hashBuffer)
+		computedSignatureHash = hash[:]
+		computedSignatureHashBase64 = base64.StdEncoding.EncodeToString(canonicalizedBodyHash)
 	case DKIM_ALGORITHM_RSA_SHA_256:
-		hashAlg := sha256.New()
-		hashAlg.Write(canonicalizedHeaderData)
-		hashAlg.Write(canonicalizedDKIMSignature)
-		hash := hashAlg.Sum(canonicalizedBodyHash)
-		signatureHash = hash[:]
-		signatureHashBase64 = base64.StdEncoding.EncodeToString(canonicalizedBodyHash)
+		hashAlgo = crypto.SHA256
+		// hashAlg := sha256.New()
+		// hashAlg.Write(canonicalizedHeaderData)
+		// hashAlg.Write(canonicalizedDKIMSignature)
+		// // hashAlg.Write([]byte{1, 2, 3, 4})
+		// hash := sha256.Sum256()
+		// hashAlg.Sum(canonicalizedBodyHash)
+		hash := sha256.Sum256(hashBuffer)
+		computedSignatureHash = hash[:]
+		computedSignatureHashBase64 = base64.StdEncoding.EncodeToString(canonicalizedBodyHash)
 	}
-	fmt.Println(signatureHash)
-	fmt.Println(signatureHashBase64)
+	signatureToValidateBytes, err := base64.StdEncoding.DecodeString(dkimSignatureToValidate.Signature)
+	if err != nil {
+		fmt.Print("failed to decode dkim signature from base 64\n\n")
+		return TEMPFAIL
+	}
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(domainKey.PublicKey)
+	if err != nil {
+		fmt.Print("failed to decode public key from base 64\n\n")
+		return TEMPFAIL
+	}
+	publicKeyInterface, err := x509.ParsePKIXPublicKey(publicKeyBytes)
+	if err != nil {
+		log.Println("Could not parse DER encoded public key (encryption key)")
+		return TEMPFAIL
+	}
+	publicKey, isRSAPublicKey := publicKeyInterface.(*rsa.PublicKey)
+	if !isRSAPublicKey {
+		log.Println("Public key parsed is not an RSA public key")
+		return TEMPFAIL
+	}
+	err = rsa.VerifyPKCS1v15(publicKey, hashAlgo, computedSignatureHash, signatureToValidateBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from verification: %s\n", err)
+		return PERMFAIL
+	}
+	fmt.Println(computedSignatureHash)
+	fmt.Println(computedSignatureHashBase64)
 	return TEMPFAIL
 }
 
@@ -363,4 +404,18 @@ func parseKeyValuePairs(data []byte, seperator, terminator rune) map[string]stri
 		parsedMap[key] = value
 	}
 	return parsedMap
+}
+
+func removeWhitespace(input []byte) string {
+	inputLength := len(input)
+	outputBytes := make([]byte, 0, len(input))
+	for i := 0; i < inputLength; {
+		currentRune, width := utf8.DecodeRune(input[i:])
+		i += width
+		if unicode.IsSpace(currentRune) {
+			continue
+		}
+		outputBytes = append(outputBytes, byte(currentRune))
+	}
+	return string(outputBytes)
 }

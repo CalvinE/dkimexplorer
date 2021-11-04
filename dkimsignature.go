@@ -189,32 +189,32 @@ func ParseDKIMSignature(header header) (DKIMSignature, error) {
 func (sig *DKIMSignature) AddValue(key, value string) error {
 	switch key {
 	case DKIMSignature_VersionKey:
-		val := value
+		val := removeWhitespace([]byte(value))
 		sig.Version = DKIMVersionValue(val)
 		if sig.Version != DKIM_VERSION_1 {
 			return fmt.Errorf("the only permitted value of DKIM signature is 1: got - %d", sig.Version)
 		}
 	case DKIMSignature_AlgorithmKey:
-		sig.Algorithm = DKIMAlgorithmValue(value)
+		sig.Algorithm = DKIMAlgorithmValue(removeWhitespace([]byte(value)))
 		if sig.Algorithm == DKIM_ALGORITHM_INVALID {
 			return fmt.Errorf("unsupported DKIM signing algorithm specified: %s", value)
 		}
 	case DKIMSignature_SignatureKey:
-		sig.Signature = value
+		sig.Signature = removeWhitespace([]byte(value))
 	case DKIMSignature_BodySignatureKey:
-		sig.BodySignature = value
+		sig.BodySignature = removeWhitespace([]byte(value))
 	case DKIMSignature_CanonicalizationAlgorithmKey:
 		sig.CanonicalizationAlgorithm = DKIMCanonAlgoValue(value)
 		if sig.CanonicalizationAlgorithm == DKIM_CANON_ALGO_INVALID {
 			return fmt.Errorf("unsupported canonicalization algorithm specified: %s", value)
 		}
 	case DKIMSignature_SigningDomainIdentifierKey:
-		sig.SigningDomainIdentifier = value
+		sig.SigningDomainIdentifier = removeWhitespace([]byte(value))
 	case DKIMSignature_SignedHeadersKey:
 		headers := strings.Split(value, ":")
 		sig.SignedHeaders = headers
 	case DKIMSignature_AgentUserIdentifierKey:
-		sig.AgentUserIdentifier = value
+		sig.AgentUserIdentifier = removeWhitespace([]byte(value))
 	case DKIMSignature_BodyLengthLimitKey:
 		val, err := strconv.ParseUint(value, 10, 32)
 		if err != nil {
@@ -222,15 +222,15 @@ func (sig *DKIMSignature) AddValue(key, value string) error {
 		}
 		sig.BodyLengthLimit = int(val)
 	case DKIMSignature_QueryMethodKey:
-		sig.QueryMethod = value
+		sig.QueryMethod = removeWhitespace([]byte(value))
 	case DKIMSignature_SelectorKey:
-		sig.Selector = value
+		sig.Selector = removeWhitespace([]byte(value))
 	case DKIMSignature_SignatureTimestampKey:
-		sig.SignatureTimestamp = value
+		sig.SignatureTimestamp = removeWhitespace([]byte(value))
 	case DKIMSignature_SignatureExpirationKey:
-		sig.SignatureExpiration = value
+		sig.SignatureExpiration = removeWhitespace([]byte(value))
 	case DKIMSignature_CopiedHeaderFieldsKey:
-		sig.CopiedHeaderFields = value
+		sig.CopiedHeaderFields = removeWhitespace([]byte(value))
 	}
 	return nil
 }
