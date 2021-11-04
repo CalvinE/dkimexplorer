@@ -325,21 +325,11 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 	switch dkimSignatureToValidate.Algorithm {
 	case DKIM_ALGORITHM_RSA_SHA_1:
 		hashAlgo = crypto.SHA1
-		// hashAlg := sha1.New()
-		// hashAlg.Write(canonicalizedHeaderData)
-		// hashAlg.Write(dkimSigForVerification)
-		// hash := hashAlg.Sum(canonicalizedBodyHash)
 		hash := sha1.Sum(hashBuffer)
 		computedSignatureHash = hash[:]
 		computedSignatureHashBase64 = base64.StdEncoding.EncodeToString(canonicalizedBodyHash)
 	case DKIM_ALGORITHM_RSA_SHA_256:
 		hashAlgo = crypto.SHA256
-		// hashAlg := sha256.New()
-		// hashAlg.Write(canonicalizedHeaderData)
-		// hashAlg.Write(canonicalizedDKIMSignature)
-		// // hashAlg.Write([]byte{1, 2, 3, 4})
-		// hash := sha256.Sum256()
-		// hashAlg.Sum(canonicalizedBodyHash)
 		hash := sha256.Sum256(hashBuffer)
 		computedSignatureHash = hash[:]
 		computedSignatureHashBase64 = base64.StdEncoding.EncodeToString(canonicalizedBodyHash)
