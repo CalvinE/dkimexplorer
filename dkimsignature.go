@@ -285,5 +285,6 @@ func GetDKIMSignatureForVerificationOrSigningBytes(sigBytes []byte) []byte {
 		prepedDKIMSIgnature = append(prepedDKIMSIgnature, byte(currentRune))
 		previousRune = currentRune
 	}
+	// TODO: whi is the CRLF gone?
 	return prepedDKIMSIgnature
 }
