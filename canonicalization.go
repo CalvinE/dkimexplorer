@@ -183,21 +183,21 @@ func getNextHeader(headerName string, PreviousHeaderCount int, headers []header)
 	}, false
 }
 
-func canonicalizeHeaderBytes(headerBytes []byte, canonicalizationAlogrithm DKIMCanonAlgorithm) ([]byte, error) {
-	header := header{
-		RawHeaderBytes: make([]byte, len(headerBytes)),
-	}
-	copy(header.RawHeaderBytes, headerBytes)
-	switch canonicalizationAlogrithm {
-	case DKIM_CANON_ALGO_SIMPLE, DKIM_CANON_ALGO_SIMPLE_RELAXED, DKIM_CANON_ALGO_SIMPLE_SIMPLE:
-		// simple canonicalization algorithm
-		return simpleCanonicalizeHeaders(header)
-	case DKIM_CANON_ALGO_RELAXED, DKIM_CANON_ALGO_RELAXED_RELAXED, DKIM_CANON_ALGO_RELAXED_SIMPLE:
-		// relaxed canonicalization algorithm
-		return relaxedCanonicalizeHeaders(header)
-	}
-	return nil, fmt.Errorf("canonicalization algorithm provided is invalid: %s", canonicalizationAlogrithm)
-}
+// func canonicalizeHeaderBytes(headerBytes []byte, canonicalizationAlogrithm DKIMCanonAlgorithm) ([]byte, error) {
+// 	header := header{
+// 		RawHeaderBytes: make([]byte, len(headerBytes)),
+// 	}
+// 	copy(header.RawHeaderBytes, headerBytes)
+// 	switch canonicalizationAlogrithm {
+// 	case DKIM_CANON_ALGO_SIMPLE, DKIM_CANON_ALGO_SIMPLE_RELAXED, DKIM_CANON_ALGO_SIMPLE_SIMPLE:
+// 		// simple canonicalization algorithm
+// 		return simpleCanonicalizeHeaders(header)
+// 	case DKIM_CANON_ALGO_RELAXED, DKIM_CANON_ALGO_RELAXED_RELAXED, DKIM_CANON_ALGO_RELAXED_SIMPLE:
+// 		// relaxed canonicalization algorithm
+// 		return relaxedCanonicalizeHeaders(header)
+// 	}
+// 	return nil, fmt.Errorf("canonicalization algorithm provided is invalid: %s", canonicalizationAlogrithm)
+// }
 
 // per https://datatracker.ietf.org/doc/html/rfc6376#section-3.4.1
 func simpleCanonicalizeHeaders(header header) ([]byte, error) {
