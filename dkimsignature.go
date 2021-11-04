@@ -235,7 +235,6 @@ func (sig *DKIMSignature) AddValue(key, value string) error {
 	return nil
 }
 
-// TODO need a way to modify the header struct to remove the b= data for verification.
 // per https://datatracker.ietf.org/doc/html/rfc6376#section-3.7 item #2
 func (dsig *DKIMSignature) GetDKIMSignatureForVerificationOrSigning() []byte {
 	rawLength := len(dsig.Header.RawHeaderBytes)
@@ -244,6 +243,32 @@ func (dsig *DKIMSignature) GetDKIMSignatureForVerificationOrSigning() []byte {
 	var previousRune rune
 	for i := 0; i < rawLength; {
 		currentRune, width := utf8.DecodeRune(dsig.RawBytes[i:])
+		i += width
+		if previousRune == 'b' && currentRune == '=' {
+			// we are at the b field value of the dkim signature
+			// lets skip until the semi colon if there is one.
+			isInB = true
+		} else if isInB {
+			if currentRune != ';' {
+				previousRune = currentRune
+				continue
+			}
+			isInB = false
+			// we want to preserve the semicolon? I am not 100% sure about this...
+		}
+		prepedDKIMSIgnature = append(prepedDKIMSIgnature, byte(currentRune))
+		previousRune = currentRune
+	}
+	return prepedDKIMSIgnature
+}
+
+func GetDKIMSignatureForVerificationOrSigningBytes(sigBytes []byte) []byte {
+	rawLength := len(sigBytes)
+	prepedDKIMSIgnature := make([]byte, 0, rawLength)
+	isInB := false
+	var previousRune rune
+	for i := 0; i < rawLength; {
+		currentRune, width := utf8.DecodeRune(sigBytes[i:])
 		i += width
 		if previousRune == 'b' && currentRune == '=' {
 			// we are at the b field value of the dkim signature

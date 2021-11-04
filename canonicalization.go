@@ -131,6 +131,27 @@ func canonicalizeHeaders(message *message, canonicalizationAlogrithm DKIMCanonAl
 	return canonicalizedHeadersData, nil
 }
 
+func canonicalizeHeader(header header, canonicalizationAlogrithm DKIMCanonAlgorithm) ([]byte, error) {
+	var canonFunc CanonicalizationAlgorithm
+	canonicalizedHeadersData := make([]byte, 0)
+	switch canonicalizationAlogrithm {
+	case DKIM_CANON_ALGO_SIMPLE, DKIM_CANON_ALGO_SIMPLE_RELAXED, DKIM_CANON_ALGO_SIMPLE_SIMPLE:
+		// simple canonicalization algorithm
+		canonFunc = simpleCanonicalizeHeaders
+	case DKIM_CANON_ALGO_RELAXED, DKIM_CANON_ALGO_RELAXED_RELAXED, DKIM_CANON_ALGO_RELAXED_SIMPLE:
+		// relaxed canonicalization algorithm
+		canonFunc = relaxedCanonicalizeHeaders
+	}
+	canonacalizedHeaderBytes, err := canonFunc(header)
+	if err != nil {
+		err = fmt.Errorf("failed to canonicalize header %s occrence %d with %s algorithm", header.getHeaderKey(true), 0, canonicalizationAlogrithm.String())
+		return nil, err
+	}
+	canonicalizedHeadersData = append(canonicalizedHeadersData, canonacalizedHeaderBytes...)
+
+	return canonicalizedHeadersData, nil
+}
+
 // looking for next non signed header per https://datatracker.ietf.org/doc/html/rfc6376#section-5.4.2
 func getNextHeader(headerName string, PreviousHeaderCount int, headers []header) (header, bool) {
 	loweredTrimmerHeaderName := strings.ToLower(strings.TrimSpace(headerName))

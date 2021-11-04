@@ -304,9 +304,9 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 			fmt.Print("skipping S flag AUID Signing DOmain verification because i= flag is not populated on DKIM signature\n\n")
 		}
 	}
-	dkimSigForVerification := dkimSignatureToValidate.GetDKIMSignatureForVerificationOrSigning()
-	canonicalizedDKIMSignature, err := canonicalizeHeaderBytes(dkimSigForVerification, dkimSignatureToValidate.CanonicalizationAlgorithm)
-	fmt.Print(string(canonicalizedDKIMSignature))
+	canonicalizedDKIMSignature, err := canonicalizeHeader(dkimSignatureToValidate.Header, dkimSignatureToValidate.CanonicalizationAlgorithm)
+	dkimSigForVerification := GetDKIMSignatureForVerificationOrSigningBytes(canonicalizedDKIMSignature)
+	fmt.Print(string(dkimSigForVerification))
 	if err != nil {
 		fmt.Printf("failed to canonicalize dkim signature for verification: %s\n\n", err.Error())
 	}
@@ -316,7 +316,7 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 	case DKIM_ALGORITHM_RSA_SHA_1:
 		hashAlg := sha1.New()
 		hashAlg.Write(canonicalizedHeaderData)
-		hashAlg.Write(canonicalizedDKIMSignature)
+		hashAlg.Write(dkimSigForVerification)
 		hash := hashAlg.Sum(canonicalizedBodyHash)
 		signatureHash = hash[:]
 		signatureHashBase64 = base64.StdEncoding.EncodeToString(canonicalizedBodyHash)
