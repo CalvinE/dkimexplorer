@@ -7,8 +7,6 @@ import (
 	"unicode/utf8"
 )
 
-// TODO: make to string and from value method for each type aliased string
-
 type DKIMVersion int
 
 const (
@@ -169,7 +167,6 @@ func NewDKIMSignature() DKIMSignature {
 	}
 }
 
-// TODO: refactor to pull out this parsing logic as it is shared with the domain key parser.
 func ParseDKIMSignature(header header) (DKIMSignature, error) {
 	dkimSignature := NewDKIMSignature()
 	dkimSignature.Header = header
