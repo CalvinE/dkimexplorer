@@ -214,25 +214,30 @@ func main() {
 func printSummary(message *message, dkimSignatureValidationResults []DKIMValidationResult) {
 
 	fmt.Print("\n\n---Message summary---\n")
-	fmt.Printf("Number of headers:\t%d\n", len(message.Headers))
-	numDkimSignatures := 0
+
+	fmt.Print("\nMessage Details\n")
+	fmt.Printf("\tBody length:\t%d\n", len(message.RawBody))
+
+	fmt.Print("\nMessage header details\n")
+	numDkimSignatures := len(dkimSignatureValidationResults)
 	for _, header := range message.Headers {
 		normalizedHeaderKey := header.getHeaderKey(true)
 		switch normalizedHeaderKey {
 		case "content-type":
-			fmt.Printf("%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
 		case "to":
-			fmt.Printf("%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
 		case "from":
-			fmt.Printf("%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
 		case "subject":
-			fmt.Printf("%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
 		case "reply-to":
-			fmt.Printf("%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
 		}
 	}
-	fmt.Printf("Body length:\t%d\n", len(message.RawBody))
-	fmt.Print("DKIM Signature Validation Summary\n")
+	fmt.Printf("\tNumber of headers:\t%d\n", len(message.Headers))
+
+	fmt.Print("\nDKIM Signature Validation Summary\n")
 	validCount := 0
 	for _, s := range dkimSignatureValidationResults {
 		fmt.Printf("\tSignature %s:%s\n\t\tvalidation result: %s\n", s.DKIMHeader.SigningDomainIdentifier, s.DKIMHeader.Selector, s.Result)
