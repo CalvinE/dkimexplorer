@@ -149,8 +149,8 @@ const (
 )
 
 type DKIMSignature struct {
-	Header                    header
-	RawBytes                  []byte
+	Header                    header             `json:"-"`
+	RawBytes                  []byte             `json:"-"`
 	Version                   DKIMVersion        `json:"v"`
 	Algorithm                 DKIMAlgorithm      `json:"a"`
 	Signature                 string             `json:"b"`
