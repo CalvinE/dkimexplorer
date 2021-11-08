@@ -19,11 +19,6 @@ import (
 	"unicode/utf8"
 )
 
-type inputArgs struct {
-	inputEmailFile string
-	verbose        bool
-}
-
 type ParserState uint8
 
 const (
@@ -48,6 +43,16 @@ const (
 	TEMPFAIL = "TEMPFAIL"
 	PERMFAIL = "PERMFAIL"
 )
+
+type DKIMValidationResult struct {
+	DKIMHeader DKIMSignature       `json:"dkimSignatuer"`
+	Result     DKIMValidationState `json:"validationResult"`
+}
+
+type inputArgs struct {
+	inputEmailFile string
+	verbose        bool
+}
 
 const (
 	cr  = '\r'
@@ -176,9 +181,11 @@ func main() {
 
 	// get DKIM Signature headers
 	dkimSignatures := message.GetHeadersByName("dkim-signature")
+	numDKIMSignatures := len(dkimSignatures)
+	dkimSignatureValidtionResults := make([]DKIMValidationResult, 0, numDKIMSignatures)
 	// we need to go backwards through the list of signatures because of how multiple headers are handeled per
 	// https://datatracker.ietf.org/doc/html/rfc6376#section-5.4.2
-	for i := len(dkimSignatures) - 1; i >= 0; i-- {
+	for i := numDKIMSignatures - 1; i >= 0; i-- {
 		signature, err := ParseDKIMSignature(dkimSignatures[i])
 		if err != nil {
 			fmt.Printf("\n\nfailed to parse DKIM Signature with error: %s\n\n", err.Error())
@@ -193,14 +200,18 @@ func main() {
 		}
 		fmt.Printf("RESULT: %s\n", string(result))
 		fmt.Print("--- END DKIM SIGNATURE VALIDATION ---\n\n")
+		dkimSignatureValidtionResults = append(dkimSignatureValidtionResults, DKIMValidationResult{
+			DKIMHeader: signature,
+			Result:     result,
+		})
 	}
 	// read body
 
 	// summary info
-	printSummary(&message)
+	printSummary(&message, dkimSignatureValidtionResults)
 }
 
-func printSummary(message *message) {
+func printSummary(message *message, dkimSignatureValidationResults []DKIMValidationResult) {
 
 	fmt.Print("\n\n---Message summary---\n")
 	fmt.Printf("Number of headers:\t%d\n", len(message.Headers))
@@ -218,12 +229,18 @@ func printSummary(message *message) {
 			fmt.Printf("%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
 		case "reply-to":
 			fmt.Printf("%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
-		case "dkim-signature":
-			numDkimSignatures++
 		}
 	}
-	fmt.Printf("Number of DKIM Signatures:\t%d\n", numDkimSignatures)
 	fmt.Printf("Body length:\t%d\n", len(message.RawBody))
+	fmt.Print("DKIM Signature Validation Summary\n")
+	validCount := 0
+	for _, s := range dkimSignatureValidationResults {
+		fmt.Printf("\tSignature %s:%s\n\t\tvalidation result: %s\n", s.DKIMHeader.SigningDomainIdentifier, s.DKIMHeader.Selector, s.Result)
+		if s.Result == SUCCESS {
+			validCount++
+		}
+	}
+	fmt.Printf("\tValid DKIM Signatures:\t%d/%d\n", validCount, numDkimSignatures)
 }
 
 func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignature, otherDKIMSignatures []header) (DKIMValidationState, error) {
