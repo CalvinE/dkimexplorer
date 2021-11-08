@@ -63,6 +63,8 @@ const (
 	colon     = ':'
 	semicolon = ";"
 	equals    = "="
+
+	CRLF = "\r\n"
 )
 
 var (
@@ -82,12 +84,12 @@ func main() {
 	}
 	fileLength := len(fileData)
 	if fileLength <= 0 {
-		fmt.Print("file contains no data!\n")
+		fmt.Printf("file contains no data!%s", CRLF)
 		os.Exit(2)
 		return
 	}
 	if inputArgs.verbose {
-		fmt.Printf("file length: %d\n", fileLength)
+		fmt.Printf("file length: %d%s", fileLength, CRLF)
 	}
 	message := message{}
 	parserState = HeaderKey
@@ -176,7 +178,7 @@ func main() {
 	copy(message.RawBody, fileData[currentFileIndex:])
 	parserState = PostBody
 	if inputArgs.verbose {
-		fmt.Printf("\n\nmessage body:\n\n%s", message.RawBody)
+		fmt.Printf("%s%smessage body:%s%s%s%s", CRLF, CRLF, CRLF, CRLF, message.RawBody, CRLF)
 	}
 
 	// get DKIM Signature headers
@@ -188,18 +190,18 @@ func main() {
 	for i := numDKIMSignatures - 1; i >= 0; i-- {
 		signature, err := ParseDKIMSignature(dkimSignatures[i])
 		if err != nil {
-			fmt.Printf("\n\nfailed to parse DKIM Signature with error: %s\n\n", err.Error())
-			fmt.Print("due to failure of DKIM-Signature parseing the signature validate results is: PERFAIL\n\n")
+			fmt.Printf("%s%sfailed to parse DKIM Signature with error: %s%s%s", CRLF, CRLF, err.Error(), CRLF, CRLF)
+			fmt.Printf("due to failure of DKIM-Signature parseing the signature validate results is: PERFAIL%s%s", CRLF, CRLF)
 			continue
 		}
-		fmt.Print("\n\n--- STARTING DKIM SIGNATURE VALIDATION ---\n")
-		fmt.Printf("DKIM Signature #%d with domain %s and selector %s\n", i+1, signature.SigningDomainIdentifier, signature.Selector)
+		fmt.Printf("%s%s--- STARTING DKIM SIGNATURE VALIDATION ---%s", CRLF, CRLF, CRLF)
+		fmt.Printf("DKIM Signature #%d with domain %s and selector %s%s", i+1, signature.SigningDomainIdentifier, signature.Selector, CRLF)
 		result, err := validateDKIMSignature(&message, signature, dkimSignatures[:i])
 		if err != nil {
-			fmt.Printf("FAILED DKIM SIGNATURE VALIDATION: %s\n", err.Error())
+			fmt.Printf("FAILED DKIM SIGNATURE VALIDATION: %s%s", err.Error(), CRLF)
 		}
-		fmt.Printf("RESULT: %s\n", string(result))
-		fmt.Print("--- END DKIM SIGNATURE VALIDATION ---\n\n")
+		fmt.Printf("RESULT: %s%s", string(result), CRLF)
+		fmt.Printf("--- END DKIM SIGNATURE VALIDATION ---%s%s", CRLF, CRLF)
 		dkimSignatureValidtionResults = append(dkimSignatureValidtionResults, DKIMValidationResult{
 			DKIMHeader: signature,
 			Result:     result,
@@ -213,46 +215,46 @@ func main() {
 
 func printSummary(message *message, dkimSignatureValidationResults []DKIMValidationResult) {
 
-	fmt.Print("\n\n---Message summary---\n")
+	fmt.Printf("%s%s---Message summary---%s", CRLF, CRLF, CRLF)
 
-	fmt.Print("\nMessage Details\n")
-	fmt.Printf("\tBody length:\t%d\n", len(message.RawBody))
+	fmt.Printf("%sMessage Details%s", CRLF, CRLF)
+	fmt.Printf("\tBody length:\t%d%s", len(message.RawBody), CRLF)
 
-	fmt.Print("\nMessage header details\n")
+	fmt.Printf("%sMessage header details%s", CRLF, CRLF)
+	fmt.Printf("\tNumber of headers:\t%d%s", len(message.Headers), CRLF)
 	numDkimSignatures := len(dkimSignatureValidationResults)
 	for _, header := range message.Headers {
 		normalizedHeaderKey := header.getHeaderKey(true)
 		switch normalizedHeaderKey {
 		case "content-type":
-			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s%s", normalizedHeaderKey, header.getHeaderTrimmedValue(), CRLF)
 		case "to":
-			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s%s", normalizedHeaderKey, header.getHeaderTrimmedValue(), CRLF)
 		case "from":
-			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s%s", normalizedHeaderKey, header.getHeaderTrimmedValue(), CRLF)
 		case "subject":
-			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s%s", normalizedHeaderKey, header.getHeaderTrimmedValue(), CRLF)
 		case "reply-to":
-			fmt.Printf("\t%s:\t%s\n", header.getHeaderKey(true), header.getHeaderTrimmedValue())
+			fmt.Printf("\t%s:\t%s%s", normalizedHeaderKey, header.getHeaderTrimmedValue(), CRLF)
 		}
 	}
-	fmt.Printf("\tNumber of headers:\t%d\n", len(message.Headers))
 
-	fmt.Print("\nDKIM Signature Validation Summary\n")
+	fmt.Printf("%sDKIM Signature Validation Summary%s", CRLF, CRLF)
 	validCount := 0
 	for _, s := range dkimSignatureValidationResults {
-		fmt.Printf("\tSignature %s:%s\n\t\tvalidation result: %s\n", s.DKIMHeader.SigningDomainIdentifier, s.DKIMHeader.Selector, s.Result)
+		fmt.Printf("\tSignature %s:%s%s\t\tvalidation result: %s%s", s.DKIMHeader.SigningDomainIdentifier, s.DKIMHeader.Selector, CRLF, s.Result, CRLF)
 		if s.Result == SUCCESS {
 			validCount++
 		}
 	}
-	fmt.Printf("\tValid DKIM Signatures:\t%d/%d\n", validCount, numDkimSignatures)
+	fmt.Printf("\tValid DKIM Signatures:\t%d/%d%s", validCount, numDkimSignatures, CRLF)
 }
 
 func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignature, otherDKIMSignatures []header) (DKIMValidationState, error) {
 	// calculate canonicalized body
 	canonicalizeBodyBytes, err := canonicalizeBody(message, dkimSignatureToValidate.CanonicalizationAlgorithm, dkimSignatureToValidate.BodyLengthLimit)
 	if err != nil {
-		fmt.Printf("Failed to canonicalize body of message: %s\n\n", err.Error())
+		fmt.Printf("Failed to canonicalize body of message: %s%s%s", err.Error(), CRLF, CRLF)
 		return PERMFAIL, err
 	}
 	// calculate hash on canonicalized body hash
@@ -271,32 +273,32 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 	}
 	// confirm canonicalized body hash to dkim signature bh value
 	if canonicalizedBodyHashBase64 != dkimSignatureToValidate.BodySignature {
-		fmt.Printf("body hash does not match: got: %s - expected: %s\n\n", canonicalizedBodyHashBase64, dkimSignatureToValidate.BodySignature)
+		fmt.Printf("body hash does not match: got: %s - expected: %s%s%s", canonicalizedBodyHashBase64, dkimSignatureToValidate.BodySignature, CRLF, CRLF)
 		return PERMFAIL, errors.New("body hash does not validate")
 	}
 	// caluclate canonicalize headers
 	canonicalizedHeaderData, err := canonicalizeHeaders(message, dkimSignatureToValidate.CanonicalizationAlgorithm, otherDKIMSignatures, dkimSignatureToValidate.SignedHeaders)
 	if err != nil {
-		fmt.Printf("failed to canonicalize headers: %s\n\n", err.Error())
+		fmt.Printf("failed to canonicalize headers: %s%s%s", err.Error(), CRLF, CRLF)
 		return TEMPFAIL, err
 	}
 	// get "domain key" from set query method
 	// for now I am going to assume the value is the defaul which is "dns/txt" I dont know if ill implment others...
 	if dkimSignatureToValidate.QueryMethod != DEFAULT_QUERY_METHOD {
-		fmt.Println("currently only one query method is supported.")
-		fmt.Printf("unsupported query method encountered: got: %s - expected: %s\n\n", dkimSignatureToValidate.QueryMethod, DEFAULT_QUERY_METHOD)
+		fmt.Printf("currently only one query method is supported.%s", CRLF)
+		fmt.Printf("unsupported query method encountered: got: %s - expected: %s%s%s", dkimSignatureToValidate.QueryMethod, DEFAULT_QUERY_METHOD, CRLF, CRLF)
 		return TEMPFAIL, errors.New("query method for domain key not supported")
 	}
 	domainKeyLocation := fmt.Sprintf("%s._domainkey.%s", dkimSignatureToValidate.Selector, dkimSignatureToValidate.SigningDomainIdentifier)
 	records, err := net.LookupTXT(domainKeyLocation)
 	if err != nil {
-		fmt.Printf("failed to retreive domain key from location %s: %s\n\n", domainKeyLocation, err.Error())
+		fmt.Printf("failed to retreive domain key from location %s: %s%s%s", domainKeyLocation, err.Error(), CRLF, CRLF)
 		return TEMPFAIL, errors.New("error quering domain key")
 	}
 	numRecords := len(records)
 	if numRecords == 0 {
 		// per https://datatracker.ietf.org/doc/html/rfc6376#section-6.1.2 item #3
-		fmt.Print("no txt record exists\n\n")
+		fmt.Printf("no txt record exists%s%s", CRLF, CRLF)
 		return PERMFAIL, errors.New("query for domain key returned no results")
 	}
 	// per https://datatracker.ietf.org/doc/html/rfc6376#section-6.1.2 item #4 we are opting to only try the first record.
@@ -306,14 +308,14 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 	domainKey, err := ParseDomainKey([]byte(records[0]))
 	if err != nil {
 		// per https://datatracker.ietf.org/doc/html/rfc6376#section-6.1.2 item #5
-		fmt.Printf("failed to parse domain key: %s\n\n", err.Error())
+		fmt.Printf("failed to parse domain key: %s%s%s", err.Error(), CRLF, CRLF)
 		return PERMFAIL, err
 	}
 	// per https://datatracker.ietf.org/doc/html/rfc6376#section-6.1.2 item # 6
 	// TODO: finish verifier steps...
 	// check for y flag and return TEMPFAIL if it is present. Per https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1
 	if domainKey.Flags.ContainsFlag(DomainKeyFlag_Y) {
-		fmt.Print("failing signature validation because y flag is present in domain key\n\n")
+		fmt.Printf("failing signature validation because y flag is present in domain key%s%s", CRLF, CRLF)
 		return TEMPFAIL, errors.New("y flag present in dkim signature")
 	}
 	// https://datatracker.ietf.org/doc/html/rfc5451 looks like the value of i= for the DKIM-Signatures is stored over there...
@@ -322,7 +324,7 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 		if len(dkimSignatureToValidate.AgentUserIdentifier) > 0 {
 			domainPortionOfAUID := strings.Split(dkimSignatureToValidate.AgentUserIdentifier, "@")
 			if len(domainPortionOfAUID) < 2 || domainPortionOfAUID[1] != dkimSignatureToValidate.SigningDomainIdentifier {
-				fmt.Printf("AUID doamin %s does not match %s\n\n", domainPortionOfAUID[1], dkimSignatureToValidate.SigningDomainIdentifier)
+				fmt.Printf("AUID doamin %s does not match %s%s%s", domainPortionOfAUID[1], dkimSignatureToValidate.SigningDomainIdentifier, CRLF, CRLF)
 				return PERMFAIL, errors.New("auid does not match sdid")
 			}
 		} else {
@@ -336,13 +338,13 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 			*/
 			// from reading the RFC I am not sure if we should extract the i field from the Authentication-Results header
 			// https://datatracker.ietf.org/doc/html/rfc5451 Authentication-Results header
-			fmt.Print("skipping S flag AUID Signing Domain verification because i= flag is not populated on DKIM signature\n\n")
+			fmt.Printf("skipping S flag AUID Signing Domain verification because i= flag is not populated on DKIM signature%s%s", CRLF, CRLF)
 		}
 	}
 	canonicalizedDKIMSignature, err := canonicalizeHeader(dkimSignatureToValidate.Header, dkimSignatureToValidate.CanonicalizationAlgorithm)
 	dkimSigForVerification := GetDKIMSignatureForVerificationOrSigningBytes(canonicalizedDKIMSignature)
 	if err != nil {
-		fmt.Printf("failed to canonicalize dkim signature for verification: %s\n\n", err.Error())
+		fmt.Printf("failed to canonicalize dkim signature for verification: %s%s%s", err.Error(), CRLF, CRLF)
 		return PERMFAIL, errors.New("invalid dkim signature for canonicalization")
 	}
 	var computedSignatureHash []byte
@@ -366,12 +368,12 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 	}
 	signatureToValidateBytes, err := base64.StdEncoding.DecodeString(dkimSignatureToValidate.Signature)
 	if err != nil {
-		fmt.Print("failed to decode dkim signature from base 64\n\n")
+		fmt.Printf("failed to decode dkim signature from base 64%s%s", CRLF, CRLF)
 		return TEMPFAIL, errors.New("failed to decode dkim signaure")
 	}
 	publicKeyBytes, err := base64.StdEncoding.DecodeString(domainKey.PublicKey)
 	if err != nil {
-		fmt.Print("failed to decode public key from base 64\n\n")
+		fmt.Printf("failed to decode public key from base 64%s%s", CRLF, CRLF)
 		return TEMPFAIL, errors.New("failed to base64 decode public key")
 	}
 	publicKeyInterface, err := x509.ParsePKIXPublicKey(publicKeyBytes)
@@ -386,7 +388,7 @@ func validateDKIMSignature(message *message, dkimSignatureToValidate DKIMSignatu
 	}
 	err = rsa.VerifyPKCS1v15(publicKey, hashAlgo, computedSignatureHash, signatureToValidateBytes)
 	if err != nil {
-		fmt.Printf("Error from verification: %s\n", err)
+		fmt.Printf("Error from verification: %s%s", err, CRLF)
 		return PERMFAIL, errors.New("verification failed")
 	}
 	return SUCCESS, nil
