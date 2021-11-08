@@ -187,7 +187,10 @@ func ParseDKIMSignature(header header) (DKIMSignature, error) {
 	rawHeaderValue := header.getHeaderRawValueBytes()
 	dkimSignatureMap := parseKeyValuePairs(rawHeaderValue, '=', ';')
 	for key, value := range dkimSignatureMap {
-		dkimSignature.AddValue(key, value)
+		err := dkimSignature.AddValue(key, value)
+		if err != nil {
+			return dkimSignature, err
+		}
 	}
 	return dkimSignature, nil
 }
